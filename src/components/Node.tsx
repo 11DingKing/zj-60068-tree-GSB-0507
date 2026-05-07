@@ -149,21 +149,8 @@ const Node: React.FC<NodeProps> = ({
         }
       : {};
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    e.stopPropagation();
-  };
-
-  const handleMouseUp = (e: React.MouseEvent) => {
-    e.stopPropagation();
-  };
-
   return (
-    <div
-      style={nodeStyle}
-      onMouseDown={onDragStart}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-    >
+    <div style={nodeStyle} onMouseDown={onDragStart}>
       <div
         style={{
           ...getNodeShape(node.style.shape),

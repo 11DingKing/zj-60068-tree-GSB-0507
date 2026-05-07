@@ -372,6 +372,42 @@ const Canvas: React.FC = () => {
   );
 
   useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      if (draggedNodeId) {
+        if (dropTargetNodeId) {
+          moveNode(draggedNodeId, dropTargetNodeId);
+
+          if (layoutMode !== "free") {
+            setTimeout(() => {
+              changeLayoutMode(layoutMode, false);
+            }, 0);
+          }
+        }
+
+        setIsDragging(false);
+        setDraggedNodeId(null);
+        setDropTargetNodeId(null);
+        setInvalidDropTargetNodeId(null);
+        setDragOffset(null);
+        dragStartNodePosRef.current = null;
+      }
+    };
+
+    window.addEventListener("mouseup", handleGlobalMouseUp);
+
+    return () => {
+      window.removeEventListener("mouseup", handleGlobalMouseUp);
+    };
+  }, [
+    draggedNodeId,
+    dropTargetNodeId,
+    moveNode,
+    layoutMode,
+    changeLayoutMode,
+    setIsDragging,
+  ]);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === "Space" && !spacePressed) {
         e.preventDefault();
