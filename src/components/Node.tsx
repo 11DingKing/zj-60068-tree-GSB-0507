@@ -39,9 +39,11 @@ const Node: React.FC<NodeProps> = ({
 }) => {
   const [editText, setEditText] = useState(node.text);
   const inputRef = useRef<HTMLInputElement>(null);
+  const finishEditCalledRef = useRef(false);
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
+      finishEditCalledRef.current = false;
       inputRef.current.focus();
       inputRef.current.select();
     }
@@ -50,15 +52,26 @@ const Node: React.FC<NodeProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      onFinishEdit(editText);
+      e.stopPropagation();
+      if (!finishEditCalledRef.current) {
+        finishEditCalledRef.current = true;
+        onFinishEdit(editText);
+      }
     } else if (e.key === "Escape") {
-      setEditText(node.text);
-      onFinishEdit(node.text);
+      e.stopPropagation();
+      if (!finishEditCalledRef.current) {
+        finishEditCalledRef.current = true;
+        setEditText(node.text);
+        onFinishEdit(node.text);
+      }
     }
   };
 
   const handleBlur = () => {
-    onFinishEdit(editText);
+    if (!finishEditCalledRef.current) {
+      finishEditCalledRef.current = true;
+      onFinishEdit(editText);
+    }
   };
 
   const getNodeShape = (shape: NodeShape) => {
@@ -143,12 +156,12 @@ const Node: React.FC<NodeProps> = ({
           borderRadius: "8px",
         }
       : canDrop
-      ? {
-          outline: "3px dashed var(--success-color)",
-          outlineOffset: "4px",
-          borderRadius: "8px",
-        }
-      : {};
+        ? {
+            outline: "3px dashed var(--success-color)",
+            outlineOffset: "4px",
+            borderRadius: "8px",
+          }
+        : {};
 
   const handleMouseMove = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -158,10 +171,15 @@ const Node: React.FC<NodeProps> = ({
     e.stopPropagation();
   };
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (isEditing) return;
+    onDragStart(e);
+  };
+
   return (
     <div
       style={nodeStyle}
-      onMouseDown={onDragStart}
+      onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
     >
