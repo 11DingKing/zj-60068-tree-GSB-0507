@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+} from "react";
 import { useAppStore } from "../store";
 import { calculateLayout } from "../layout";
 import { LayoutMode, MindMapNode } from "../types";
@@ -8,6 +14,8 @@ import Connections from "./Connections";
 const Canvas: React.FC = () => {
   const {
     getCurrentMindMap,
+    getVisibleConnections,
+    isDescendantOf,
     selectedNodeIds,
     editingNodeId,
     zoom,
@@ -36,14 +44,21 @@ const Canvas: React.FC = () => {
     moveNode,
     setNodePosition,
     changeLayoutMode,
-    mindMaps,
-    currentMindMapId,
+    mindMaps: _mindMaps,
+    currentMindMapId: _currentMindMapId,
+    saveToHistory,
   } = useAppStore();
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
   const [dropTargetNodeId, setDropTargetNodeId] = useState<string | null>(null);
-  const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number } | null>(null);
+  const [invalidDropTargetNodeId, setInvalidDropTargetNodeId] = useState<
+    string | null
+  >(null);
+  const [dragOffset, setDragOffset] = useState<{
+    dx: number;
+    dy: number;
+  } | null>(null);
 
   const dragStartNodePosRef = useRef<{
     nodeId: string;
@@ -57,9 +72,13 @@ const Canvas: React.FC = () => {
   const layoutMode: LayoutMode = mindMap?.layoutMode || "right";
 
   const connections = useMemo(() => {
-    const store = useAppStore.getState();
-    return store.getVisibleConnections();
-  }, [mindMaps, currentMindMapId, mindMap?.nodes]);
+    return getVisibleConnections();
+  }, [
+    getVisibleConnections,
+    _mindMaps,
+    _currentMindMapId,
+    mindMap?.layoutMode,
+  ]);
 
   const layoutResult = useMemo(() => {
     if (!mindMap) {
@@ -189,7 +208,7 @@ const Canvas: React.FC = () => {
 
           let currentDraggedX = startPos.x + dx;
           let currentDraggedY = startPos.y + dy;
-          
+
           const currentPos = positions[draggedNodeId];
           if (currentPos && layoutMode === "free") {
             currentDraggedX = currentPos.x + currentPos.width / 2;
@@ -208,7 +227,14 @@ const Canvas: React.FC = () => {
           );
 
           if (distance < 100) {
-            setDropTargetNodeId(nodeId);
+            const isDescendant = isDescendantOf(nodeId, draggedNodeId);
+            if (isDescendant) {
+              setInvalidDropTargetNodeId(nodeId);
+              setDropTargetNodeId(null);
+            } else {
+              setDropTargetNodeId(nodeId);
+              setInvalidDropTargetNodeId(null);
+            }
             foundDropTarget = true;
             break;
           }
@@ -216,6 +242,7 @@ const Canvas: React.FC = () => {
 
         if (!foundDropTarget) {
           setDropTargetNodeId(null);
+          setInvalidDropTargetNodeId(null);
         }
       }
     },
@@ -234,6 +261,7 @@ const Canvas: React.FC = () => {
       setNodePosition,
       visibleNodeIds,
       positions,
+      isDescendantOf,
     ],
   );
 
@@ -245,13 +273,14 @@ const Canvas: React.FC = () => {
 
       if (layoutMode !== "free") {
         setTimeout(() => {
-          changeLayoutMode(layoutMode);
+          changeLayoutMode(layoutMode, false);
         }, 0);
       }
     }
 
     setDraggedNodeId(null);
     setDropTargetNodeId(null);
+    setInvalidDropTargetNodeId(null);
     setDragOffset(null);
     dragStartNodePosRef.current = null;
   }, [
@@ -285,10 +314,18 @@ const Canvas: React.FC = () => {
       setEditingNode(null);
 
       if (layoutMode !== "free") {
-        changeLayoutMode(layoutMode);
+        changeLayoutMode(layoutMode, false);
       }
+
+      saveToHistory();
     },
-    [updateNodeText, setEditingNode, layoutMode, changeLayoutMode],
+    [
+      updateNodeText,
+      setEditingNode,
+      layoutMode,
+      changeLayoutMode,
+      saveToHistory,
+    ],
   );
 
   const handleNodeToggleCollapse = useCallback(
@@ -298,7 +335,7 @@ const Canvas: React.FC = () => {
         collapseNode(nodeId, !node.collapsed);
 
         if (layoutMode !== "free") {
-          changeLayoutMode(layoutMode);
+          changeLayoutMode(layoutMode, false);
         }
       }
     },
@@ -346,7 +383,7 @@ const Canvas: React.FC = () => {
         addChildNode(selectedNodeIds[0]);
 
         if (layoutMode !== "free") {
-          changeLayoutMode(layoutMode);
+          changeLayoutMode(layoutMode, false);
         }
       }
 
@@ -355,7 +392,7 @@ const Canvas: React.FC = () => {
         addSiblingNode(selectedNodeIds[0]);
 
         if (layoutMode !== "free") {
-          changeLayoutMode(layoutMode);
+          changeLayoutMode(layoutMode, false);
         }
       }
 
@@ -430,6 +467,8 @@ const Canvas: React.FC = () => {
     const isSelected = selectedNodeIds.includes(nodeId);
     const isEditing = editingNodeId === nodeId;
     const canDrop = dropTargetNodeId === nodeId && draggedNodeId !== nodeId;
+    const isInvalidDrop =
+      invalidDropTargetNodeId === nodeId && draggedNodeId !== nodeId;
     const isDragging = draggedNodeId === nodeId;
     const showDragOffset = isDragging && dragOffset && layoutMode !== "free";
 
@@ -446,7 +485,9 @@ const Canvas: React.FC = () => {
         key={nodeId}
         style={{
           pointerEvents: "auto",
-          transition: showDragOffset ? "none" : "transform 0.2s ease, opacity 0.2s ease",
+          transition: showDragOffset
+            ? "none"
+            : "transform 0.2s ease, opacity 0.2s ease",
           opacity: isDragging ? 0.9 : 1,
         }}
       >
@@ -464,6 +505,7 @@ const Canvas: React.FC = () => {
           onToggleCollapse={() => handleNodeToggleCollapse(nodeId)}
           onDragStart={(e) => handleNodeDragStart(nodeId, e)}
           canDrop={canDrop}
+          isInvalidDrop={isInvalidDrop}
         />
         {showDragOffset && (
           <div
@@ -498,7 +540,11 @@ const Canvas: React.FC = () => {
           radial-gradient(circle, #e8e8e8 1px, transparent 1px)
         `,
         backgroundSize: "20px 20px",
-        cursor: spacePressed ? "grabbing" : draggedNodeId ? "grabbing" : "default",
+        cursor: spacePressed
+          ? "grabbing"
+          : draggedNodeId
+            ? "grabbing"
+            : "default",
       }}
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
