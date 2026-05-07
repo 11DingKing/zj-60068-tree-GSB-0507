@@ -167,9 +167,7 @@ const Node: React.FC<NodeProps> = ({
     e.stopPropagation();
   };
 
-  const handleMouseUp = (e: React.MouseEvent) => {
-    e.stopPropagation();
-  };
+  const handleMouseUp = () => {};
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (isEditing) return;
