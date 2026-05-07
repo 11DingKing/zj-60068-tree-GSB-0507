@@ -1,17 +1,24 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { MindMap, MindMapNode, NodeStyle, Connection, LayoutMode, LineStyle } from '../types';
-import { generateId, deepClone } from '../utils';
-import { calculateLayout } from '../layout';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import {
+  MindMap,
+  MindMapNode,
+  NodeStyle,
+  Connection,
+  LayoutMode,
+  LineStyle,
+} from "../types";
+import { generateId, deepClone } from "../utils";
+import { calculateLayout } from "../layout";
 
-const STORAGE_KEY = 'mind-map-editor-storage';
+const STORAGE_KEY = "mind-map-editor-storage";
 
 const DEFAULT_STYLE: NodeStyle = {
-  backgroundColor: '#ffffff',
-  borderColor: '#d9d9d9',
-  textColor: '#000000',
+  backgroundColor: "#ffffff",
+  borderColor: "#d9d9d9",
+  textColor: "#000000",
   fontSize: 14,
-  shape: 'rounded-rect',
+  shape: "rounded-rect",
 };
 
 interface HistoryItem {
@@ -45,39 +52,43 @@ interface AppStoreActions {
   renameMindMap: (id: string, name: string) => void;
   duplicateMindMap: (id: string) => string;
   selectMindMap: (id: string) => void;
-  
+
   addChildNode: (parentId: string) => string | null;
   addSiblingNode: (nodeId: string) => string | null;
   deleteNode: (nodeId: string) => void;
   updateNodeText: (nodeId: string, text: string) => void;
   updateNodeStyle: (nodeId: string, style: Partial<NodeStyle>) => void;
   collapseNode: (nodeId: string, collapsed: boolean) => void;
-  moveNode: (nodeId: string, newParentId: string, insertIndex?: number) => void;
+  moveNode: (
+    nodeId: string,
+    newParentId: string,
+    insertIndex?: number,
+  ) => boolean;
   setNodePosition: (nodeId: string, x: number, y: number) => void;
-  
+
   selectNode: (nodeId: string, multiSelect?: boolean) => void;
   deselectAll: () => void;
   setEditingNode: (nodeId: string | null) => void;
-  
+
   setZoom: (zoom: number) => void;
   setPan: (x: number, y: number) => void;
   panBy: (dx: number, dy: number) => void;
   zoomBy: (delta: number, centerX?: number, centerY?: number) => void;
-  
+
   setIsDragging: (dragging: boolean) => void;
   setDragStart: (x: number, y: number) => void;
   setSpacePressed: (pressed: boolean) => void;
   setCommandPanelOpen: (open: boolean) => void;
-  
+
   changeLayoutMode: (mode: LayoutMode) => void;
   changeLineStyle: (style: LineStyle) => void;
-  
+
   fitToScreen: () => void;
-  
+
   undo: () => void;
   redo: () => void;
   saveToHistory: () => void;
-  
+
   getCurrentMindMap: () => MindMap | null;
   getNode: (nodeId: string) => MindMapNode | undefined;
   getParentNode: (nodeId: string) => MindMapNode | undefined;
@@ -89,10 +100,10 @@ interface AppStoreActions {
 function createDefaultMindMap(): MindMap {
   const rootId = generateId();
   const now = Date.now();
-  
+
   const rootNode: MindMapNode = {
     id: rootId,
-    text: '中心主题',
+    text: "中心主题",
     children: [],
     x: 400,
     y: 300,
@@ -100,8 +111,8 @@ function createDefaultMindMap(): MindMap {
     height: 40,
     style: {
       ...DEFAULT_STYLE,
-      backgroundColor: '#e6f7ff',
-      borderColor: '#1890ff',
+      backgroundColor: "#e6f7ff",
+      borderColor: "#1890ff",
       fontSize: 16,
     },
     collapsed: false,
@@ -109,10 +120,10 @@ function createDefaultMindMap(): MindMap {
 
   const child1Id = generateId();
   const child2Id = generateId();
-  
+
   const child1: MindMapNode = {
     id: child1Id,
-    text: '分支 1',
+    text: "分支 1",
     children: [],
     parentId: rootId,
     x: 600,
@@ -125,7 +136,7 @@ function createDefaultMindMap(): MindMap {
 
   const child2: MindMapNode = {
     id: child2Id,
-    text: '分支 2',
+    text: "分支 2",
     children: [],
     parentId: rootId,
     x: 600,
@@ -143,8 +154,8 @@ function createDefaultMindMap(): MindMap {
     from: rootId,
     to: child1Id,
     style: {
-      lineStyle: 'straight',
-      color: '#1890ff',
+      lineStyle: "straight",
+      color: "#1890ff",
       width: 2,
     },
   };
@@ -154,8 +165,8 @@ function createDefaultMindMap(): MindMap {
     from: rootId,
     to: child2Id,
     style: {
-      lineStyle: 'straight',
-      color: '#1890ff',
+      lineStyle: "straight",
+      color: "#1890ff",
       width: 2,
     },
   };
@@ -171,17 +182,17 @@ function createDefaultMindMap(): MindMap {
 
   const mindMap: MindMap = {
     id: generateId(),
-    name: '未命名导图',
+    name: "未命名导图",
     createdAt: now,
     updatedAt: now,
     rootNodeId: rootId,
     nodes,
     connections,
-    layoutMode: 'right',
-    globalLineStyle: 'straight',
+    layoutMode: "right",
+    globalLineStyle: "straight",
   };
 
-  const { positions } = calculateLayout(nodes, rootId, 'right');
+  const { positions } = calculateLayout(nodes, rootId, "right");
   for (const nodeId of Object.keys(positions)) {
     if (nodes[nodeId]) {
       nodes[nodeId].x = positions[nodeId].x;
@@ -200,7 +211,7 @@ export const useAppStore = create<AppStore>()(
   persist(
     (set, get) => {
       const initialMindMap = createDefaultMindMap();
-      
+
       return {
         mindMaps: {
           [initialMindMap.id]: initialMindMap,
@@ -239,13 +250,13 @@ export const useAppStore = create<AppStore>()(
           set((state) => {
             const newMindMaps = { ...state.mindMaps };
             delete newMindMaps[id];
-            
+
             let newCurrentId = state.currentMindMapId;
             if (newCurrentId === id) {
               const remainingIds = Object.keys(newMindMaps);
               newCurrentId = remainingIds.length > 0 ? remainingIds[0] : null;
             }
-            
+
             return {
               mindMaps: newMindMaps,
               currentMindMapId: newCurrentId,
@@ -258,7 +269,7 @@ export const useAppStore = create<AppStore>()(
           set((state) => {
             const mindMap = state.mindMaps[id];
             if (!mindMap) return state;
-            
+
             return {
               mindMaps: {
                 ...state.mindMaps,
@@ -275,17 +286,17 @@ export const useAppStore = create<AppStore>()(
 
         duplicateMindMap: (id) => {
           const original = get().mindMaps[id];
-          if (!original) return '';
-          
+          if (!original) return "";
+
           const newMap = deepClone(original);
           const newId = generateId();
           newMap.id = newId;
           newMap.name = `${original.name} (副本)`;
           newMap.createdAt = Date.now();
           newMap.updatedAt = Date.now();
-          
+
           const idMap: Record<string, string> = {};
-          
+
           function remapNode(node: MindMapNode): MindMapNode {
             const newNodeId = generateId();
             idMap[node.id] = newNodeId;
@@ -295,29 +306,29 @@ export const useAppStore = create<AppStore>()(
               children: [],
             };
           }
-          
+
           const newNodes: Record<string, MindMapNode> = {};
-          
+
           function cloneNodeTree(nodeId: string, newParentId?: string): string {
             const originalNode = original.nodes[nodeId];
-            if (!originalNode) return '';
-            
+            if (!originalNode) return "";
+
             const newNode = remapNode(originalNode);
             newNode.parentId = newParentId;
             newNodes[newNode.id] = newNode;
-            
+
             for (const childId of originalNode.children) {
               const newChildId = cloneNodeTree(childId, newNode.id);
               newNode.children.push(newChildId);
             }
-            
+
             return newNode.id;
           }
-          
+
           const newRootId = cloneNodeTree(original.rootNodeId);
           newMap.rootNodeId = newRootId;
           newMap.nodes = newNodes;
-          
+
           const newConnections: Record<string, Connection> = {};
           for (const connId of Object.keys(original.connections)) {
             const conn = original.connections[connId];
@@ -334,7 +345,7 @@ export const useAppStore = create<AppStore>()(
             }
           }
           newMap.connections = newConnections;
-          
+
           set((state) => ({
             mindMaps: {
               ...state.mindMaps,
@@ -342,7 +353,7 @@ export const useAppStore = create<AppStore>()(
             },
             currentMindMapId: newId,
           }));
-          
+
           return newId;
         },
 
@@ -360,14 +371,14 @@ export const useAppStore = create<AppStore>()(
         addChildNode: (parentId) => {
           const mindMap = get().getCurrentMindMap();
           if (!mindMap) return null;
-          
+
           const parentNode = mindMap.nodes[parentId];
           if (!parentNode) return null;
-          
+
           const newNodeId = generateId();
           const newNode: MindMapNode = {
             id: newNodeId,
-            text: '新节点',
+            text: "新节点",
             children: [],
             parentId,
             x: parentNode.x + 150,
@@ -384,15 +395,15 @@ export const useAppStore = create<AppStore>()(
             to: newNodeId,
             style: {
               lineStyle: mindMap.globalLineStyle,
-              color: '#1890ff',
+              color: "#1890ff",
               width: 2,
             },
           };
 
           set((state) => {
-            const currentMap = state.mindMaps[state.currentMindMapId || ''];
+            const currentMap = state.mindMaps[state.currentMindMapId || ""];
             if (!currentMap) return state;
-            
+
             const updatedParent = {
               ...currentMap.nodes[parentId],
               children: [...currentMap.nodes[parentId].children, newNodeId],
@@ -430,20 +441,20 @@ export const useAppStore = create<AppStore>()(
         addSiblingNode: (nodeId) => {
           const mindMap = get().getCurrentMindMap();
           if (!mindMap) return null;
-          
+
           const node = mindMap.nodes[nodeId];
           if (!node || !node.parentId) {
             return get().addChildNode(mindMap.rootNodeId);
           }
-          
+
           const parentNode = mindMap.nodes[node.parentId];
           if (!parentNode) return null;
-          
+
           const siblingIndex = parentNode.children.indexOf(nodeId);
           const newNodeId = generateId();
           const newNode: MindMapNode = {
             id: newNodeId,
-            text: '新节点',
+            text: "新节点",
             children: [],
             parentId: node.parentId,
             x: node.x,
@@ -460,19 +471,19 @@ export const useAppStore = create<AppStore>()(
             to: newNodeId,
             style: {
               lineStyle: mindMap.globalLineStyle,
-              color: '#1890ff',
+              color: "#1890ff",
               width: 2,
             },
           };
 
           set((state) => {
-            const currentMap = state.mindMaps[state.currentMindMapId || ''];
+            const currentMap = state.mindMaps[state.currentMindMapId || ""];
             if (!currentMap) return state;
-            
+
             const updatedParent = {
               ...currentMap.nodes[node.parentId!],
             };
-            
+
             const newChildren = [...updatedParent.children];
             newChildren.splice(siblingIndex + 1, 0, newNodeId);
             updatedParent.children = newChildren;
@@ -508,12 +519,12 @@ export const useAppStore = create<AppStore>()(
         deleteNode: (nodeId) => {
           const mindMap = get().getCurrentMindMap();
           if (!mindMap) return;
-          
+
           const node = mindMap.nodes[nodeId];
           if (!node) return;
-          
+
           const currentMap = mindMap;
-          
+
           function collectDescendantIds(id: string): string[] {
             const result: string[] = [id];
             const n = currentMap.nodes[id];
@@ -526,15 +537,15 @@ export const useAppStore = create<AppStore>()(
           }
 
           const idsToDelete = collectDescendantIds(nodeId);
-          
+
           set((state) => {
-            const currentMap = state.mindMaps[state.currentMindMapId || ''];
+            const currentMap = state.mindMaps[state.currentMindMapId || ""];
             if (!currentMap) return state;
-            
+
             const updatedNodes = { ...currentMap.nodes };
             const updatedConnections = { ...currentMap.connections };
             let updatedParent: MindMapNode | undefined;
-            
+
             if (node.parentId) {
               const parent = updatedNodes[node.parentId];
               if (parent) {
@@ -545,10 +556,10 @@ export const useAppStore = create<AppStore>()(
                 updatedNodes[node.parentId] = updatedParent;
               }
             }
-            
+
             for (const id of idsToDelete) {
               delete updatedNodes[id];
-              
+
               for (const connId of Object.keys(updatedConnections)) {
                 const conn = updatedConnections[connId];
                 if (conn.from === id || conn.to === id) {
@@ -567,7 +578,9 @@ export const useAppStore = create<AppStore>()(
                   connections: updatedConnections,
                 },
               },
-              selectedNodeIds: state.selectedNodeIds.filter((id) => !idsToDelete.includes(id)),
+              selectedNodeIds: state.selectedNodeIds.filter(
+                (id) => !idsToDelete.includes(id),
+              ),
               editingNodeId: null,
             };
           });
@@ -577,9 +590,9 @@ export const useAppStore = create<AppStore>()(
 
         updateNodeText: (nodeId, text) => {
           set((state) => {
-            const currentMap = state.mindMaps[state.currentMindMapId || ''];
+            const currentMap = state.mindMaps[state.currentMindMapId || ""];
             if (!currentMap || !currentMap.nodes[nodeId]) return state;
-            
+
             return {
               mindMaps: {
                 ...state.mindMaps,
@@ -601,9 +614,9 @@ export const useAppStore = create<AppStore>()(
 
         updateNodeStyle: (nodeId, style) => {
           set((state) => {
-            const currentMap = state.mindMaps[state.currentMindMapId || ''];
+            const currentMap = state.mindMaps[state.currentMindMapId || ""];
             if (!currentMap || !currentMap.nodes[nodeId]) return state;
-            
+
             return {
               mindMaps: {
                 ...state.mindMaps,
@@ -629,9 +642,9 @@ export const useAppStore = create<AppStore>()(
 
         collapseNode: (nodeId, collapsed) => {
           set((state) => {
-            const currentMap = state.mindMaps[state.currentMindMapId || ''];
+            const currentMap = state.mindMaps[state.currentMindMapId || ""];
             if (!currentMap || !currentMap.nodes[nodeId]) return state;
-            
+
             return {
               mindMaps: {
                 ...state.mindMaps,
@@ -654,15 +667,17 @@ export const useAppStore = create<AppStore>()(
 
         moveNode: (nodeId, newParentId, insertIndex) => {
           const mindMap = get().getCurrentMindMap();
-          if (!mindMap) return;
-          
+          if (!mindMap) return false;
+
           const node = mindMap.nodes[nodeId];
           const newParent = mindMap.nodes[newParentId];
-          
-          if (!node || !newParent) return;
-          
+
+          if (!node || !newParent) return false;
+
+          if (nodeId === newParentId) return false;
+
           const currentMap = mindMap;
-          
+
           function isDescendant(parentId: string, childId: string): boolean {
             const parent = currentMap.nodes[parentId];
             if (!parent) return false;
@@ -672,16 +687,16 @@ export const useAppStore = create<AppStore>()(
             }
             return false;
           }
-          
-          if (isDescendant(nodeId, newParentId)) return;
-          
+
+          if (isDescendant(nodeId, newParentId)) return false;
+
           set((state) => {
-            const currentMap = state.mindMaps[state.currentMindMapId || ''];
+            const currentMap = state.mindMaps[state.currentMindMapId || ""];
             if (!currentMap) return state;
-            
+
             const updatedNodes = { ...currentMap.nodes };
             const updatedConnections = { ...currentMap.connections };
-            
+
             if (node.parentId) {
               const oldParent = updatedNodes[node.parentId];
               if (oldParent) {
@@ -690,7 +705,7 @@ export const useAppStore = create<AppStore>()(
                   children: oldParent.children.filter((id) => id !== nodeId),
                 };
               }
-              
+
               for (const connId of Object.keys(updatedConnections)) {
                 const conn = updatedConnections[connId];
                 if (conn.from === node.parentId && conn.to === nodeId) {
@@ -701,7 +716,7 @@ export const useAppStore = create<AppStore>()(
                 }
               }
             }
-            
+
             const updatedNewParent = { ...updatedNodes[newParentId] };
             const newChildren = [...updatedNewParent.children];
             const existingIndex = newChildren.indexOf(nodeId);
@@ -716,7 +731,7 @@ export const useAppStore = create<AppStore>()(
             updatedNewParent.children = newChildren;
             updatedNewParent.collapsed = false;
             updatedNodes[newParentId] = updatedNewParent;
-            
+
             updatedNodes[nodeId] = {
               ...updatedNodes[nodeId],
               parentId: newParentId,
@@ -736,13 +751,14 @@ export const useAppStore = create<AppStore>()(
           });
 
           get().saveToHistory();
+          return true;
         },
 
         setNodePosition: (nodeId, x, y) => {
           set((state) => {
-            const currentMap = state.mindMaps[state.currentMindMapId || ''];
+            const currentMap = state.mindMaps[state.currentMindMapId || ""];
             if (!currentMap || !currentMap.nodes[nodeId]) return state;
-            
+
             return {
               mindMaps: {
                 ...state.mindMaps,
@@ -768,7 +784,9 @@ export const useAppStore = create<AppStore>()(
             let newSelectedIds: string[];
             if (multiSelect) {
               if (state.selectedNodeIds.includes(nodeId)) {
-                newSelectedIds = state.selectedNodeIds.filter((id) => id !== nodeId);
+                newSelectedIds = state.selectedNodeIds.filter(
+                  (id) => id !== nodeId,
+                );
               } else {
                 newSelectedIds = [...state.selectedNodeIds, nodeId];
               }
@@ -813,17 +831,20 @@ export const useAppStore = create<AppStore>()(
 
         zoomBy: (delta, centerX, centerY) => {
           set((state) => {
-            const newZoom = Math.max(0.3, Math.min(3, state.zoom + delta * state.zoom * 0.2));
+            const newZoom = Math.max(
+              0.3,
+              Math.min(3, state.zoom + delta * state.zoom * 0.2),
+            );
             const zoomRatio = newZoom / state.zoom;
-            
+
             let newPanX = state.panX;
             let newPanY = state.panY;
-            
+
             if (centerX !== undefined && centerY !== undefined) {
               newPanX = centerX - (centerX - state.panX) * zoomRatio;
               newPanY = centerY - (centerY - state.panY) * zoomRatio;
             }
-            
+
             return {
               zoom: newZoom,
               panX: newPanX,
@@ -855,11 +876,15 @@ export const useAppStore = create<AppStore>()(
 
         changeLayoutMode: (mode) => {
           set((state) => {
-            const currentMap = state.mindMaps[state.currentMindMapId || ''];
+            const currentMap = state.mindMaps[state.currentMindMapId || ""];
             if (!currentMap) return state;
-            
-            const { positions } = calculateLayout(currentMap.nodes, currentMap.rootNodeId, mode);
-            
+
+            const { positions } = calculateLayout(
+              currentMap.nodes,
+              currentMap.rootNodeId,
+              mode,
+            );
+
             const updatedNodes = { ...currentMap.nodes };
             for (const nodeId of Object.keys(positions)) {
               if (updatedNodes[nodeId]) {
@@ -890,9 +915,9 @@ export const useAppStore = create<AppStore>()(
 
         changeLineStyle: (style) => {
           set((state) => {
-            const currentMap = state.mindMaps[state.currentMindMapId || ''];
+            const currentMap = state.mindMaps[state.currentMindMapId || ""];
             if (!currentMap) return state;
-            
+
             const updatedConnections = { ...currentMap.connections };
             for (const connId of Object.keys(updatedConnections)) {
               updatedConnections[connId] = {
@@ -922,32 +947,32 @@ export const useAppStore = create<AppStore>()(
         fitToScreen: () => {
           const mindMap = get().getCurrentMindMap();
           if (!mindMap) return;
-          
+
           const viewportWidth = window.innerWidth - 250;
           const viewportHeight = window.innerHeight - 60;
-          
+
           const { bounds } = calculateLayout(
             mindMap.nodes,
             mindMap.rootNodeId,
-            mindMap.layoutMode
+            mindMap.layoutMode,
           );
-          
+
           if (bounds.width === 0 || bounds.height === 0) return;
-          
+
           const padding = 50;
           const scaleX = (viewportWidth - padding * 2) / bounds.width;
           const scaleY = (viewportHeight - padding * 2) / bounds.height;
           const newZoom = Math.min(scaleX, scaleY, 1);
-          
+
           const clampedZoom = Math.max(0.3, Math.min(3, newZoom));
           const centerX = viewportWidth / 2 + 250 / 2;
           const centerY = viewportHeight / 2 + 30;
           const contentCenterX = bounds.x + bounds.width / 2;
           const contentCenterY = bounds.y + bounds.height / 2;
-          
+
           const newPanX = centerX - contentCenterX * clampedZoom;
           const newPanY = centerY - contentCenterY * clampedZoom;
-          
+
           set({
             zoom: clampedZoom,
             panX: newPanX,
@@ -961,10 +986,10 @@ export const useAppStore = create<AppStore>()(
               mindMaps: deepClone(state.mindMaps),
               currentMindMapId: state.currentMindMapId,
             };
-            
+
             const newHistory = state.history.slice(0, state.historyIndex + 1);
             newHistory.push(newHistoryItem);
-            
+
             if (newHistory.length > state.maxHistory) {
               newHistory.shift();
               return {
@@ -972,7 +997,7 @@ export const useAppStore = create<AppStore>()(
                 historyIndex: newHistory.length - 1,
               };
             }
-            
+
             return {
               history: newHistory,
               historyIndex: newHistory.length - 1,
@@ -982,11 +1007,12 @@ export const useAppStore = create<AppStore>()(
 
         undo: () => {
           const state = get();
+          if (state.editingNodeId) return;
           if (state.historyIndex <= 0) return;
-          
+
           const prevIndex = state.historyIndex - 1;
           const prevState = state.history[prevIndex];
-          
+
           if (prevState) {
             set({
               mindMaps: deepClone(prevState.mindMaps),
@@ -1000,11 +1026,12 @@ export const useAppStore = create<AppStore>()(
 
         redo: () => {
           const state = get();
+          if (state.editingNodeId) return;
           if (state.historyIndex >= state.history.length - 1) return;
-          
+
           const nextIndex = state.historyIndex + 1;
           const nextState = state.history[nextIndex];
-          
+
           if (nextState) {
             set({
               mindMaps: deepClone(nextState.mindMaps),
@@ -1036,11 +1063,11 @@ export const useAppStore = create<AppStore>()(
         getVisibleConnections: () => {
           const mindMap = get().getCurrentMindMap();
           if (!mindMap) return [];
-          
+
           const currentMap = mindMap;
           const visibleConnections: Connection[] = [];
           const visibleNodeIds = new Set<string>();
-          
+
           function collectVisibleNodes(nodeId: string) {
             visibleNodeIds.add(nodeId);
             const node = currentMap.nodes[nodeId];
@@ -1050,16 +1077,16 @@ export const useAppStore = create<AppStore>()(
               }
             }
           }
-          
+
           collectVisibleNodes(currentMap.rootNodeId);
-          
+
           for (const connId of Object.keys(currentMap.connections)) {
             const conn = currentMap.connections[connId];
             if (visibleNodeIds.has(conn.from) && visibleNodeIds.has(conn.to)) {
               visibleConnections.push(conn);
             }
           }
-          
+
           return visibleConnections;
         },
 
@@ -1078,6 +1105,6 @@ export const useAppStore = create<AppStore>()(
         mindMaps: state.mindMaps,
         currentMindMapId: state.currentMindMapId,
       }),
-    }
-  )
+    },
+  ),
 );
