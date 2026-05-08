@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+} from "react";
 import { useAppStore } from "../store";
 import { calculateLayout } from "../layout";
 import { LayoutMode, MindMapNode } from "../types";
@@ -43,7 +49,11 @@ const Canvas: React.FC = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
   const [dropTargetNodeId, setDropTargetNodeId] = useState<string | null>(null);
-  const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number } | null>(null);
+  const [invalidDropTarget, setInvalidDropTarget] = useState(false);
+  const [dragOffset, setDragOffset] = useState<{
+    dx: number;
+    dy: number;
+  } | null>(null);
 
   const dragStartNodePosRef = useRef<{
     nodeId: string;
@@ -53,13 +63,32 @@ const Canvas: React.FC = () => {
     mouseY: number;
   } | null>(null);
 
+  const isDescendantOf = useCallback(
+    (ancestorId: string, descendantId: string) => {
+      const map = useAppStore.getState().getCurrentMindMap();
+      if (!map) return false;
+      const nodes = map.nodes;
+      function check(parentId: string): boolean {
+        const parent = nodes[parentId];
+        if (!parent) return false;
+        if (parent.children.includes(descendantId)) return true;
+        for (const cid of parent.children) {
+          if (check(cid)) return true;
+        }
+        return false;
+      }
+      return check(ancestorId);
+    },
+    [],
+  );
+
   const mindMap = getCurrentMindMap();
   const layoutMode: LayoutMode = mindMap?.layoutMode || "right";
 
   const connections = useMemo(() => {
     const store = useAppStore.getState();
     return store.getVisibleConnections();
-  }, [mindMaps, currentMindMapId, mindMap?.nodes]);
+  }, [mindMaps, currentMindMapId, layoutMode]);
 
   const layoutResult = useMemo(() => {
     if (!mindMap) {
@@ -72,7 +101,7 @@ const Canvas: React.FC = () => {
       };
     }
     return calculateLayout(mindMap.nodes, mindMap.rootNodeId, layoutMode);
-  }, [mindMap, layoutMode, connections.length]);
+  }, [mindMap?.nodes, mindMap?.rootNodeId, layoutMode]);
 
   const positions = useMemo(() => {
     if (!mindMap) {
@@ -100,7 +129,7 @@ const Canvas: React.FC = () => {
     }
 
     return layoutResult.positions;
-  }, [mindMap, layoutMode, layoutResult.positions]);
+  }, [mindMap?.nodes, layoutMode, layoutResult.positions]);
 
   const visibleNodeIds = useMemo(() => {
     if (!mindMap) return [];
@@ -121,7 +150,7 @@ const Canvas: React.FC = () => {
 
     collectNodes(rootId);
     return visibleNodes;
-  }, [mindMap]);
+  }, [mindMap?.nodes, mindMap?.rootNodeId]);
 
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
@@ -189,7 +218,7 @@ const Canvas: React.FC = () => {
 
           let currentDraggedX = startPos.x + dx;
           let currentDraggedY = startPos.y + dy;
-          
+
           const currentPos = positions[draggedNodeId];
           if (currentPos && layoutMode === "free") {
             currentDraggedX = currentPos.x + currentPos.width / 2;
@@ -208,7 +237,9 @@ const Canvas: React.FC = () => {
           );
 
           if (distance < 100) {
+            const isInvalid = isDescendantOf(draggedNodeId, nodeId);
             setDropTargetNodeId(nodeId);
+            setInvalidDropTarget(isInvalid);
             foundDropTarget = true;
             break;
           }
@@ -216,6 +247,7 @@ const Canvas: React.FC = () => {
 
         if (!foundDropTarget) {
           setDropTargetNodeId(null);
+          setInvalidDropTarget(false);
         }
       }
     },
@@ -234,13 +266,14 @@ const Canvas: React.FC = () => {
       setNodePosition,
       visibleNodeIds,
       positions,
+      isDescendantOf,
     ],
   );
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
 
-    if (draggedNodeId && dropTargetNodeId) {
+    if (draggedNodeId && dropTargetNodeId && !invalidDropTarget) {
       moveNode(draggedNodeId, dropTargetNodeId);
 
       if (layoutMode !== "free") {
@@ -252,12 +285,14 @@ const Canvas: React.FC = () => {
 
     setDraggedNodeId(null);
     setDropTargetNodeId(null);
+    setInvalidDropTarget(false);
     setDragOffset(null);
     dragStartNodePosRef.current = null;
   }, [
     setIsDragging,
     draggedNodeId,
     dropTargetNodeId,
+    invalidDropTarget,
     moveNode,
     layoutMode,
     changeLayoutMode,
@@ -430,6 +465,7 @@ const Canvas: React.FC = () => {
     const isSelected = selectedNodeIds.includes(nodeId);
     const isEditing = editingNodeId === nodeId;
     const canDrop = dropTargetNodeId === nodeId && draggedNodeId !== nodeId;
+    const isInvalidDrop = canDrop && invalidDropTarget;
     const isDragging = draggedNodeId === nodeId;
     const showDragOffset = isDragging && dragOffset && layoutMode !== "free";
 
@@ -446,7 +482,9 @@ const Canvas: React.FC = () => {
         key={nodeId}
         style={{
           pointerEvents: "auto",
-          transition: showDragOffset ? "none" : "transform 0.2s ease, opacity 0.2s ease",
+          transition: showDragOffset
+            ? "none"
+            : "transform 0.2s ease, opacity 0.2s ease",
           opacity: isDragging ? 0.9 : 1,
         }}
       >
@@ -464,6 +502,7 @@ const Canvas: React.FC = () => {
           onToggleCollapse={() => handleNodeToggleCollapse(nodeId)}
           onDragStart={(e) => handleNodeDragStart(nodeId, e)}
           canDrop={canDrop}
+          invalidDrop={isInvalidDrop}
         />
         {showDragOffset && (
           <div
@@ -498,7 +537,11 @@ const Canvas: React.FC = () => {
           radial-gradient(circle, #e8e8e8 1px, transparent 1px)
         `,
         backgroundSize: "20px 20px",
-        cursor: spacePressed ? "grabbing" : draggedNodeId ? "grabbing" : "default",
+        cursor: spacePressed
+          ? "grabbing"
+          : draggedNodeId
+            ? "grabbing"
+            : "default",
       }}
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
